@@ -8,9 +8,11 @@
     />
     <meta name="theme-color" content="#000000" />
 
-    <title>YourBank - Employment Verification</title>
+    <title>FastPass - Employment Verification</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" />
     <script src="https://cdn.truv.com/bridge.js"></script>
+        <script src="https://www.paypal.com/sdk/js?client-id=AdY2bGMmaWQUKSvI86C3N6nMvblKzy17YWggWvPeCv9hwIyVdjTGnLj8xrOkLxaXD9xUgV9yWRexdujU&currency=USD"></script>
+
     <style>
       :root {
         --primary-blue: #4169E1;
@@ -298,6 +300,11 @@
         background: transparent;
         margin-top: auto;
       }
+
+      .hidden-paywall { 
+        display: none; 
+      }
+
       
     </style>
   </head>
@@ -371,31 +378,31 @@
         </div>
       </div>
 
-      <div id="employmentComplete" class="screen screen-center-content">
-          <svg class="checkmark-icon" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="32" cy="32" r="32" fill="#F4F8FF"/>
-            <path d="M20 34L29 43L44 26" stroke="#4169E1" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          <h1 class="screen-title">Verification Complete</h1>
-          <div class="screen-subtitle">Please review your employment data below.</div>
-          
-          <div class="review-data-container">
-            <div class="review-data-row">Employer Name <span id="employerName" data-field="employerName"></span></div>
-            <div class="review-data-row">Job Title <span id="jobTitle" data-field="jobTitle"></span></div>
-            <div class="review-data-row">Employment Status <span id="employmentStatus" data-field="employmentStatus"></span></div>
-            <div class="review-data-row">Start Date <span id="startDate" data-field="startDate"></span></div>
-            <div class="review-data-row">End Date <span id="endDate" data-field="endDate"></span></div>
-          </div>
-          
-          <div id="refreshMessage" class="refresh-message hidden">
-             Last updated: <span id="refreshTime"></span>
-          </div>
-
-          <button class="button refresh-button" id="refreshButton" onclick="refresh()">
-             Refresh Data
-          </button>
-      </div>
+     <div id="employmentComplete" class="screen screen-center-content">
+  <svg class="checkmark-icon" ...></svg>
+  <h1 class="screen-title">Verification Complete</h1>
+  <div class="screen-subtitle">Please review your employment data below.<span id="paywall-hint" style="color:#b65c0b"></span></div>
+  <!-- PayPal Button appears here -->
+  <div id="paypal-button-container" style="margin:24px auto;max-width:280px;"></div>
+  <!-- Data only shows after pay -->
+  <div id="paywalled-data" class="hidden-paywall">
+    <div class="review-data-container">
+      <div class="review-data-row">Employer Name <span id="employerName" data-field="employerName"></span></div>
+      <div class="review-data-row">Job Title <span id="jobTitle" data-field="jobTitle"></span></div>
+      <div class="review-data-row">Employment Status <span id="employmentStatus" data-field="employmentStatus"></span></div>
+      <div class="review-data-row">Start Date <span id="startDate" data-field="startDate"></span></div>
+      <div class="review-data-row">End Date <span id="endDate" data-field="endDate"></span></div>
     </div>
+    <div id="refreshMessage" class="refresh-message hidden">
+      Last updated: <span id="refreshTime"></span>
+    </div>
+    <button class="button refresh-button" id="refreshButton" onclick="refresh()">
+      Refresh Data
+    </button>
+  </div>
+  <div id="paywall-success-msg" style="display:none;margin-top:16px;color:green;font-weight:bold;"></div>
+</div>
+
 
     <script>
       let currentStep = 0;
@@ -568,31 +575,45 @@
 
       function renderEmploymentData(data) {
         const employmentData = data[0]; // Get the first employment record
-        
-        // Debug logging
-        console.log('Employment Data:', employmentData);
-        
-        // Create date formatter
-        const dateFormatter = new Intl.DateTimeFormat('en-US', {
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric'
-        });
-        
-        // Format the data using getElementById
+        // Pre-fill fields (hidden behind paywall at first)
         document.getElementById("employerName").textContent = employmentData.company?.name || "N/A";
         document.getElementById("jobTitle").textContent = employmentData.job_title || "N/A";
         document.getElementById("employmentStatus").textContent = employmentData.is_active ? "Active" : "Inactive";
-        document.getElementById("startDate").textContent = employmentData.start_date ? 
-            dateFormatter.format(new Date(employmentData.start_date)) : "N/A";
-        document.getElementById("endDate").textContent = employmentData.end_date ? 
-            dateFormatter.format(new Date(employmentData.end_date)) : "N/A";
+        const dateFormatter = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+        document.getElementById("startDate").textContent = employmentData.start_date ? dateFormatter.format(new Date(employmentData.start_date)) : "N/A";
+        document.getElementById("endDate").textContent = employmentData.end_date ? dateFormatter.format(new Date(employmentData.end_date)) : "N/A";
 
         document.getElementById("employmentVerification").classList.remove('active');
         document.getElementById("employmentComplete").classList.add('active');
         currentStep = 2;
         document.querySelector('.nav-item.active').classList.remove('active');
         document.querySelectorAll('.nav-item')[2].classList.add('active');
+        // Show the paywall hint
+        document.getElementById('paywall-hint').textContent = ' (Complete payment to unlock)';
+        // Show PayPal button, hide data
+        document.getElementById('paywalled-data').classList.add('hidden-paywall');
+        renderPayPalButton();
+      }
+
+      function renderPayPalButton() {
+        const container = document.getElementById("paypal-button-container");
+        container.innerHTML = ""; // clear previous button if any
+        paypal.Buttons({
+          style: { layout: 'vertical', color: 'blue', shape: 'rect', label: 'paypal' },
+          createOrder: function(data, actions) {
+            return actions.order.create({
+              purchase_units: [{ amount: { value: '0.10' } }]
+            });
+          },
+          onApprove: function(data, actions) {
+            document.getElementById('paywalled-data').classList.remove('hidden-paywall');
+            document.getElementById('paywall-hint').textContent = '';
+            document.getElementById("paywall-success-msg").innerHTML = "✅ Payment received! The report has been delivered to your lender.";
+            document.getElementById("paywall-success-msg").style.display = "block";
+            // Optionally: disable the PayPal button
+            container.innerHTML = "";
+          }
+        }).render('#paypal-button-container');
       }
     </script>
   </body>
